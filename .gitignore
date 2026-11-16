@@ -1,0 +1,21 @@
+# Binaries & build artifacts
+bin/
+*.exe
+*.o
+*.out
+*.obj
+
+# Database & runtime files
+*.db
+*.db-journal
+*.log
+
+# Temp directory created accidentally
+-p/
+
+# OS / Editor files
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
