@@ -278,9 +278,10 @@ static void test_round_timer_deadlines(void) {
 
   /* Thử thêm 1 người phụ khác (id=3) nộp ở mốc t = 35s -> Phải bị từ chối
    * TIMEOUT */
-  match_join_lobby(&ctx, 3, "charlie_sub", "token_3", 3);
+  ctx.players[2].user_id = 3;
   ctx.players[2].role = ROLE_SUB;
   ctx.players[2].status = PLAYER_STATUS_ACTIVE;
+  ctx.player_count = 3;
   AnswerSubmitResult res_sub_late =
       match_submit_round_answer_validated(&ctx, 3, 301, 1, "C", t_35s, 35000);
   assert(res_sub_late == ANSWER_ACK_ERR_TIMEOUT);

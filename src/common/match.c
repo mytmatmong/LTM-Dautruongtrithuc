@@ -1,3 +1,7 @@
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "match.h"
 #include "net_framing.h"
 #include <ctype.h>
@@ -7,6 +11,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <sys/time.h>
 #include <time.h>
 #endif
 
@@ -842,6 +847,10 @@ int match_evaluate_round_pure(const MatchContext *ctx, RoundEvaluationResult *ou
     out_eval->winner_user_id = -1;
     out_eval->new_match_state = MATCH_STATE_ENDED;
     out_eval->new_main_id = -1;
+    /* Người chính bị loại nhưng trong kịch bản tất cả cùng sai và trận kết thúc,
+     * bảo toàn tổng điểm hoặc giữ nguyên điểm để atomic check hợp lệ */
+    out_eval->player_deltas[main_idx].score_delta_units = 0;
+    out_eval->player_deltas[main_idx].new_score_units = main_score;
     return 0;
   }
 
@@ -888,19 +897,28 @@ int match_evaluate_round_pure(const MatchContext *ctx, RoundEvaluationResult *ou
 
     /* Phân phối remainder (nếu có): ưu tiên người trả lời đúng sớm nhất theo thứ tự */
     int r_distributed = 0;
-    /* Ưu tiên 1: người phụ trả lời đúng theo thứ tự thời gian */
-    for (int k = 0; k < sub_correct_count && r_distributed < remainder; k++) {
-      int idx = sub_correct_indices[k];
-      out_eval->player_deltas[idx].score_delta_units += 1;
-      out_eval->player_deltas[idx].new_score_units += 1;
+    if (remainder > 0) {
+      /* Ưu tiên 1: người phụ trả lời đúng sớm nhất (earliest_sub_idx) */
+      out_eval->player_deltas[earliest_sub_idx].score_delta_units += 1;
+      out_eval->player_deltas[earliest_sub_idx].new_score_units += 1;
       r_distributed++;
-    }
-    /* Ưu tiên 2: nếu vẫn còn dư, chia tiếp cho người phụ sai theo thứ tự user_id */
-    for (int k = 0; k < sub_wrong_count && r_distributed < remainder; k++) {
-      int idx = sub_wrong_indices[k];
-      out_eval->player_deltas[idx].score_delta_units += 1;
-      out_eval->player_deltas[idx].new_score_units += 1;
-      r_distributed++;
+
+      /* Nếu còn dư tiếp, chia cho các người phụ đúng khác theo thứ tự */
+      for (int k = 0; k < sub_correct_count && r_distributed < remainder; k++) {
+        int idx = sub_correct_indices[k];
+        if (idx == earliest_sub_idx)
+          continue;
+        out_eval->player_deltas[idx].score_delta_units += 1;
+        out_eval->player_deltas[idx].new_score_units += 1;
+        r_distributed++;
+      }
+      /* Ưu tiên 2: nếu vẫn còn dư, chia tiếp cho người phụ sai theo thứ tự */
+      for (int k = 0; k < sub_wrong_count && r_distributed < remainder; k++) {
+        int idx = sub_wrong_indices[k];
+        out_eval->player_deltas[idx].score_delta_units += 1;
+        out_eval->player_deltas[idx].new_score_units += 1;
+        r_distributed++;
+      }
     }
   }
 

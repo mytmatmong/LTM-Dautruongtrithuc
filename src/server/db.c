@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char *SCHEMA_SQL =
-    "PRAGMA foreign_keys = ON;\n"
+static const char *const SCHEMA_STATEMENTS[] = {
+    "PRAGMA foreign_keys = ON;",
     "CREATE TABLE IF NOT EXISTS users (\n"
     "    user_id       INTEGER PRIMARY KEY AUTOINCREMENT,\n"
     "    username      TEXT NOT NULL COLLATE NOCASE,\n"
@@ -13,8 +13,8 @@ static const char *SCHEMA_SQL =
     "    created_at    DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),\n"
     "    CONSTRAINT uq_username UNIQUE (username),\n"
     "    CONSTRAINT chk_username_len CHECK (length(username) >= 3 AND length(username) <= 32)\n"
-    ");\n"
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);\n"
+    ");",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);",
     "CREATE TABLE IF NOT EXISTS login_sessions (\n"
     "    session_id  TEXT PRIMARY KEY,\n"
     "    user_id     INTEGER NOT NULL,\n"
@@ -23,9 +23,9 @@ static const char *SCHEMA_SQL =
     "    is_active   INTEGER NOT NULL DEFAULT 1,\n"
     "    CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,\n"
     "    CONSTRAINT chk_session_is_active CHECK (is_active IN (0, 1))\n"
-    ");\n"
-    "CREATE INDEX IF NOT EXISTS idx_sessions_auth ON login_sessions(session_id, is_active);\n"
-    "CREATE INDEX IF NOT EXISTS idx_sessions_user ON login_sessions(user_id, is_active);\n"
+    ");",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_auth ON login_sessions(session_id, is_active);",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_user ON login_sessions(user_id, is_active);",
     "CREATE TABLE IF NOT EXISTS questions (\n"
     "    question_id    INTEGER PRIMARY KEY AUTOINCREMENT,\n"
     "    content        TEXT NOT NULL,\n"
@@ -34,8 +34,8 @@ static const char *SCHEMA_SQL =
     "    is_active      INTEGER NOT NULL DEFAULT 1,\n"
     "    created_at     DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),\n"
     "    CONSTRAINT chk_question_active CHECK (is_active IN (0, 1))\n"
-    ");\n"
-    "CREATE INDEX IF NOT EXISTS idx_questions_active ON questions(is_active);\n"
+    ");",
+    "CREATE INDEX IF NOT EXISTS idx_questions_active ON questions(is_active);",
     "CREATE TABLE IF NOT EXISTS matches (\n"
     "    match_id       INTEGER PRIMARY KEY AUTOINCREMENT,\n"
     "    status         TEXT NOT NULL DEFAULT 'ACTIVE',\n"
@@ -43,7 +43,7 @@ static const char *SCHEMA_SQL =
     "    ended_at       DATETIME,\n"
     "    winner_user_id INTEGER,\n"
     "    CONSTRAINT fk_matches_winner FOREIGN KEY (winner_user_id) REFERENCES users(user_id) ON DELETE SET NULL\n"
-    ");\n"
+    ");",
     "CREATE TABLE IF NOT EXISTS match_players (\n"
     "    match_id    INTEGER NOT NULL,\n"
     "    user_id     INTEGER NOT NULL,\n"
@@ -56,7 +56,7 @@ static const char *SCHEMA_SQL =
     "    CONSTRAINT fk_mp_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,\n"
     "    CONSTRAINT chk_mp_score CHECK (score_units >= 0),\n"
     "    CONSTRAINT chk_mp_skip CHECK (skip_count >= 0 AND skip_count <= 2)\n"
-    ");\n"
+    ");",
     "CREATE TABLE IF NOT EXISTS rounds (\n"
     "    round_id     INTEGER NOT NULL,\n"
     "    match_id     INTEGER NOT NULL,\n"
@@ -69,7 +69,7 @@ static const char *SCHEMA_SQL =
     "    CONSTRAINT fk_rounds_match FOREIGN KEY (match_id) REFERENCES matches(match_id) ON DELETE CASCADE,\n"
     "    CONSTRAINT fk_rounds_question FOREIGN KEY (question_id) REFERENCES questions(question_id) ON DELETE SET NULL,\n"
     "    CONSTRAINT fk_rounds_main FOREIGN KEY (main_user_id) REFERENCES users(user_id) ON DELETE SET NULL\n"
-    ");\n"
+    ");",
     "CREATE TABLE IF NOT EXISTS answers (\n"
     "    round_id    INTEGER NOT NULL,\n"
     "    match_id    INTEGER NOT NULL,\n"
@@ -80,7 +80,7 @@ static const char *SCHEMA_SQL =
     "    PRIMARY KEY (match_id, round_id, user_id),\n"
     "    CONSTRAINT fk_answers_round FOREIGN KEY (match_id, round_id) REFERENCES rounds(match_id, round_id) ON DELETE CASCADE,\n"
     "    CONSTRAINT fk_answers_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE\n"
-    ");\n"
+    ");",
     "CREATE TABLE IF NOT EXISTS score_transfers (\n"
     "    transfer_id  INTEGER PRIMARY KEY AUTOINCREMENT,\n"
     "    round_id     INTEGER NOT NULL,\n"
@@ -91,7 +91,7 @@ static const char *SCHEMA_SQL =
     "    reason       TEXT NOT NULL,\n"
     "    created_at   DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),\n"
     "    CONSTRAINT fk_st_round FOREIGN KEY (match_id, round_id) REFERENCES rounds(match_id, round_id) ON DELETE CASCADE\n"
-    ");\n"
+    ");",
     "CREATE TABLE IF NOT EXISTS game_logs (\n"
     "    log_id      INTEGER PRIMARY KEY AUTOINCREMENT,\n"
     "    match_id    INTEGER NOT NULL,\n"
@@ -99,7 +99,9 @@ static const char *SCHEMA_SQL =
     "    description TEXT NOT NULL,\n"
     "    created_at  DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),\n"
     "    CONSTRAINT fk_gl_match FOREIGN KEY (match_id) REFERENCES matches(match_id) ON DELETE CASCADE\n"
-    ");\n";
+    ");",
+    NULL
+};
 
 int db_init(const char *db_path, sqlite3 **out_db) {
     if (!db_path || !out_db) return DB_ERR_GENERIC;
@@ -122,13 +124,16 @@ int db_init(const char *db_path, sqlite3 **out_db) {
         err_msg = NULL;
     }
 
-    rc = sqlite3_exec(db, SCHEMA_SQL, NULL, NULL, &err_msg);
-    if (rc != SQLITE_OK) {
-        fprintf(stderr, "[DB ERROR] Failed to initialize schema: %s\n", err_msg ? err_msg : "unknown");
-        sqlite3_free(err_msg);
-        sqlite3_close(db);
-        *out_db = NULL;
-        return DB_ERR_GENERIC;
+    for (size_t i = 0; SCHEMA_STATEMENTS[i] != NULL; i++) {
+        rc = sqlite3_exec(db, SCHEMA_STATEMENTS[i], NULL, NULL, &err_msg);
+        if (rc != SQLITE_OK) {
+            fprintf(stderr, "[DB ERROR] Failed to initialize schema (statement %zu): %s\n", i,
+                    err_msg ? err_msg : "unknown");
+            sqlite3_free(err_msg);
+            sqlite3_close(db);
+            *out_db = NULL;
+            return DB_ERR_GENERIC;
+        }
     }
 
     *out_db = db;

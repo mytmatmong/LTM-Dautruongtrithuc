@@ -297,7 +297,6 @@ static void *timer_watcher_thread(void *arg)
         for (int d = 0; d < eval.delta_count && d < DB_MAX_SCORE_TRANSFERS;
              d++) {
           if (eval.player_deltas[d].score_delta_units != 0) {
-            tx.transfers[tx.transfer_count].round_id = 0; /* tx handler will bind round_id */
             tx.transfers[tx.transfer_count].from_user_id =
                 (eval.player_deltas[d].score_delta_units < 0)
                     ? eval.player_deltas[d].user_id
@@ -754,49 +753,106 @@ static void process_client_message(socket_t sock, const char *raw_msg,
                client_ip, client_port, val_user, (long)val_uid, res);
       }
     }
-  } else {
-    fprintf(stderr, "[Thread %s:%u] Lỗi I/O socket (status=%d).\n", client_ip,
-            (unsigned)client_port, status);
-    break;
-  }
-}
-
-/* Khi client disconnect, tự động xóa khỏi lobby (nếu đang ở lobby) và vô hiệu
- * hóa session trong DB */
-if (thread_user_id > 0) {
-  lock_match();
-  bool removed = match_remove_player(&g_active_match, thread_user_id);
-  unlock_match();
-  if (removed) {
-    broadcast_lobby_update();
   }
 
-  lock_db();
-  db_session_invalidate_all_for_user(g_db, thread_user_id);
-  unlock_db();
-  printf(
-      "[Thread %s:%u] Đã vô hiệu hóa phiên của user ID %ld khi ngắt kết nối\n",
-      client_ip, (unsigned)client_port, (long)thread_user_id);
+  if (strlen(reply_buf) > 0) {
+    net_send_all(sock, reply_buf, strlen(reply_buf));
+  }
 }
-
-free(rb);
-free(msg_buf);
-CLOSE_SOCKET(client_sock);
-
-lock_sync();
-g_active_clients--;
-int current_count = g_active_clients;
-unlock_sync();
-
-printf("[Thread] Kết thúc phục vụ %s:%d. Còn lại %d clients đang hoạt động.\n",
-       client_ip, client_port, current_count);
-
-free(ctx);
 
 #ifdef _WIN32
-return 0;
+static unsigned __stdcall handle_client_thread(void *arg)
 #else
-return NULL;
+static void *handle_client_thread(void *arg)
+#endif
+{
+  ClientContext *ctx = (ClientContext *)arg;
+  socket_t client_sock = ctx->client_sock;
+  struct sockaddr_in client_addr = ctx->client_addr;
+
+  char client_ip[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+  uint16_t client_port = ntohs(client_addr.sin_port);
+
+  int64_t thread_user_id = 0;
+  char thread_session_id[64] = {0};
+
+  NetRecvBuffer *rb = (NetRecvBuffer *)malloc(sizeof(NetRecvBuffer));
+  char *msg_buf = (char *)malloc(NET_MAX_MSG_LEN + 1);
+
+  if (!rb || !msg_buf) {
+    fprintf(stderr, "[Thread %s:%u] Cấp phát bộ nhớ thất bại!\n", client_ip,
+            (unsigned)client_port);
+    free(rb);
+    free(msg_buf);
+    CLOSE_SOCKET(client_sock);
+    lock_sync();
+    g_active_clients--;
+    unlock_sync();
+    free(ctx);
+#ifdef _WIN32
+    return 0;
+#else
+    return NULL;
+#endif
+  }
+
+  net_recv_buffer_init(rb);
+
+  while (1) {
+    NetStatus status =
+        net_recv_message(client_sock, rb, msg_buf, NET_MAX_MSG_LEN + 1);
+
+    if (status == NET_STATUS_OK) {
+      process_client_message(client_sock, msg_buf, &thread_user_id,
+                             thread_session_id, client_ip, client_port);
+    } else if (status == NET_STATUS_EOF) {
+      printf("[Thread %s:%u] Client đã chủ động ngắt kết nối.\n", client_ip,
+             (unsigned)client_port);
+      break;
+    } else {
+      fprintf(stderr, "[Thread %s:%u] Lỗi I/O socket (status=%d).\n", client_ip,
+              (unsigned)client_port, status);
+      break;
+    }
+  }
+
+  /* Khi client disconnect, tự động xóa khỏi lobby (nếu đang ở lobby) và vô hiệu
+   * hóa session trong DB */
+  if (thread_user_id > 0) {
+    lock_match();
+    bool removed = match_remove_player(&g_active_match, thread_user_id);
+    unlock_match();
+    if (removed) {
+      broadcast_lobby_update();
+    }
+
+    lock_db();
+    db_session_invalidate_all_for_user(g_db, thread_user_id);
+    unlock_db();
+    printf(
+        "[Thread %s:%u] Đã vô hiệu hóa phiên của user ID %ld khi ngắt kết nối\n",
+        client_ip, (unsigned)client_port, (long)thread_user_id);
+  }
+
+  free(rb);
+  free(msg_buf);
+  CLOSE_SOCKET(client_sock);
+
+  lock_sync();
+  g_active_clients--;
+  int current_count = g_active_clients;
+  unlock_sync();
+
+  printf("[Thread] Kết thúc phục vụ %s:%d. Còn lại %d clients đang hoạt động.\n",
+         client_ip, client_port, current_count);
+
+  free(ctx);
+
+#ifdef _WIN32
+  return 0;
+#else
+  return NULL;
 #endif
 }
 

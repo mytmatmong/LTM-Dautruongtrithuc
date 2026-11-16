@@ -25,7 +25,7 @@ TEST_NET_SEND_SRCS = tests/test_net_send.c src/common/net_framing.c
 TEST_NET_RECV_SRCS = tests/test_net_recv.c src/common/net_framing.c
 TEST_DB_SRCS = tests/test_db.c src/server/db.c
 TEST_AUTH_SRCS = tests/test_auth.c src/server/db.c src/common/auth_crypto.c src/common/auth_msg.c
-TEST_LOBBY_SRCS = tests/test_lobby.c src/common/match.c
+TEST_LOBBY_SRCS = tests/test_lobby.c src/common/match.c src/common/net_framing.c
 
 .PHONY: all server client test clean
 
