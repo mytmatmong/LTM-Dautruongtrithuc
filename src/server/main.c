@@ -753,6 +753,12 @@ static void process_client_message(socket_t sock, const char *raw_msg,
                client_ip, client_port, val_user, (long)val_uid, res);
       }
     }
+  } else {
+    /* Bản tin không xác định hoặc JSON lỗi không hợp lệ */
+    snprintf(reply_buf, sizeof(reply_buf),
+             "{\"type\":\"ERROR\",\"status\":\"error\",\"payload\":{\"code\":"
+             "\"INVALID_JSON\",\"message\":\"Thông điệp JSON không hợp lệ hoặc "
+             "không hỗ trợ\"}}\n");
   }
 
   if (strlen(reply_buf) > 0) {

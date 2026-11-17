@@ -833,10 +833,12 @@ static void test_p9_1_broadcast_score_updated_json(void) {
 
   match_join_lobby(&ctx, 101, "player_1", "tok_1", 10);
   match_join_lobby(&ctx, 102, "player_2", "tok_2", 11);
-  match_join_lobby(&ctx, 103, "player_3", "tok_3", -1); /* Client disconnected: socket_fd < 0 */
-  ctx.players[2].status = PLAYER_STATUS_DISCONNECTED;
-
   match_start_game(&ctx, 101);
+  /* Thêm player 3 sau khi game start và gán DISCONNECTED */
+  ctx.players[2].user_id = 103;
+  snprintf(ctx.players[2].username, sizeof(ctx.players[2].username), "player_3");
+  ctx.players[2].status = PLAYER_STATUS_DISCONNECTED;
+  ctx.player_count = 3;
   ctx.current_round = 3;
   ctx.players[0].score_units = 1500;
   ctx.players[1].score_units = 500;
@@ -1094,6 +1096,8 @@ static void test_p9_2_concurrent_duplicate_answer_submit(void) {
   match_join_lobby(&ctx, 51, "other_player", "tok_51", 2);
 
   match_start_game(&ctx, 50);
+  ctx.players[0].role = ROLE_MAIN;
+  ctx.players[1].role = ROLE_SUB;
   match_setup_round_question(&ctx, 1, "A");
 
   test_mutex_t lock;
